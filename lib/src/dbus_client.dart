@@ -245,13 +245,17 @@ class DBusClient {
   /// If [messageBus] is false, then the server is not running a message bus and
   /// no addresses or client to client communication is supported.
   /// If [authClient] is provided, it will be used instead of creating a new one.
+  /// Set [allowAnonymous] to permit ANONYMOUS authentication when EXTERNAL is
+  /// unavailable.
   DBusClient(DBusAddress address,
       {this.introspectable = true,
       bool messageBus = true,
+      bool allowAnonymous = false,
       DBusAuthClient? authClient})
       : _address = address,
         _messageBus = messageBus,
-        _authClient = authClient ?? DBusAuthClient();
+        _authClient =
+            authClient ?? DBusAuthClient(allowAnonymous: allowAnonymous);
 
   /// Creates a new DBus client to communicate with the system bus.
   factory DBusClient.system({bool introspectable = true}) {
