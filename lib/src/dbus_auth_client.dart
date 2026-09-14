@@ -10,8 +10,10 @@ class DBusAuthClient {
   final _doneCompleter = Completer();
   final _requestsController = StreamController<String>();
   var _attemptedExternal = false;
+  var _attemptedAnonymous = false;
   var _isAuthenticated = false;
   final bool _requestUnixFd;
+  final bool _allowAnonymous;
   var _unixFdSupported = false;
   DBusUUID? _uuid;
   String? _errorMessage;
@@ -36,8 +38,12 @@ class DBusAuthClient {
   String? get errorMessage => _errorMessage;
 
   /// Creates a new authentication client.
-  DBusAuthClient({bool requestUnixFd = true, String? uid})
-      : _requestUnixFd = requestUnixFd,
+  DBusAuthClient({
+    bool requestUnixFd = true,
+    bool allowAnonymous = false,
+    String? uid,
+  })  : _requestUnixFd = requestUnixFd,
+        _allowAnonymous = allowAnonymous,
         _uid = uid {
     // On start, end an empty byte, as this is required if sending the credentials as a socket control message.
     // We rely on the server using SO_PEERCRED to check out credentials.
@@ -66,17 +72,23 @@ class DBusAuthClient {
 
     switch (command) {
       case 'REJECTED':
-        if (!_attemptedExternal) {
-          var mechanisms = args.split(' ');
-          if (mechanisms.contains('EXTERNAL')) {
-            _attemptedExternal = true;
-            _authenticateExternal();
-          } else {
-            _fail('No supported mechanism');
-          }
-        } else {
+        if (_attemptedExternal && (!_allowAnonymous || _attemptedAnonymous)) {
           _errorMessage = args;
           _doneCompleter.complete();
+          break;
+        }
+
+        var mechanisms = args.split(' ');
+        if (!_attemptedExternal && mechanisms.contains('EXTERNAL')) {
+          _attemptedExternal = true;
+          _authenticateExternal();
+        } else if (_allowAnonymous &&
+            !_attemptedAnonymous &&
+            mechanisms.contains('ANONYMOUS')) {
+          _attemptedAnonymous = true;
+          _authenticateAnonymous();
+        } else {
+          _fail('No supported mechanism');
         }
         break;
       case 'OK':
@@ -144,6 +156,11 @@ class DBusAuthClient {
       authIdHex += c.toRadixString(16).padLeft(2, '0');
     }
     _send('AUTH EXTERNAL $authIdHex');
+  }
+
+  /// Start authentication using the ANONYMOUS mechanism.
+  void _authenticateAnonymous() {
+    _send('AUTH ANONYMOUS');
   }
 
   /// Complete authentication.
